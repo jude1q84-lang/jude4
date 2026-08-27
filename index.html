@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Horse Analyzer App</title>
+  
+  <!-- Tailwind CSS の読み込み -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- 依存ライブラリの名前解決 (Import Map) -->
+  <script type="importmap">
+    {
+      "imports": {
+        "react": "https://esm.sh/react@18.2.0",
+        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+        "lucide-react": "https://esm.sh/lucide-react@0.350.0"
+      }
+    }
+  </script>
+
+  <!-- ブラウザ上で TSX を自動変換するための Babel -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    /* 読み込み中のアニメーション用 */
+    .loader {
+      border: 4px solid #334155;
+      border-top: 4px solid #8b5cf6; /* Purple-500 */
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </script>
+</head>
+<body class="bg-slate-900 min-h-screen text-slate-100">
+  <div id="root">
+    <!-- 初期ローディング画面 -->
+    <div class="flex flex-col items-center justify-center min-h-screen">
+      <div class="loader mb-4"></div>
+      <p class="text-slate-400 font-medium">システムを起動中...</p>
+    </div>
+  </div>
+
+  <script type="module">
+    import React from 'react';
+    import { createRoot } from 'react-dom/client';
+
+    async function loadApp() {
+      try {
+        // 1. 同じフォルダにある App.tsx (元のコード) を取得
+        const response = await fetch('./App.tsx');
+        if (!response.ok) {
+          throw new Error('App.tsx の読み込みに失敗しました。GitHub上のファイル名が「App.tsx」になっているか確認してください。');
+        }
+        const tsxCode = await response.text();
+
+        // 2. Babel で TSX をブラウザ向け JS に変換
+        // (import/export 構文はそのまま残し、ES Module として動かします)
+        const compiled = Babel.transform(tsxCode, {
+          presets: ['react', 'typescript'],
+          filename: 'App.tsx'
+        }).code;
+
+        // 3. 変換したコードを動的モジュールとしてブラウザに読み込ませる
+        const blob = new Blob([compiled], { type: 'application/javascript' });
+        const url = URL.createObjectURL(blob);
+        
+        const module = await import(url);
+        
+        // 4. export default されたコンポーネント (App) を取得
+        const AppComponent = module.default;
+        
+        if (!AppComponent) {
+          throw new Error('App.tsx の最後に `export default App;` のような記述が見つかりません。');
+        }
+
+        // 5. 画面にマウント (描画) して起動
+        const rootElement = document.getElementById('root');
+        const root = createRoot(rootElement);
+        root.render(React.createElement(AppComponent));
+        
+        // 読み込み完了後にメモリを解放
+        URL.revokeObjectURL(url); 
+
+      } catch (error) {
+        console.error(error);
+        document.getElementById('root').innerHTML = `
+          <div class="flex flex-col items-center justify-center min-h-screen p-4 text-center">
+            <div class="bg-red-900/50 border border-red-500 text-red-200 p-6 rounded-lg max-w-md w-full shadow-lg">
+              <h2 class="text-xl font-bold mb-2 flex items-center justify-center">
+                <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                起動エラー
+              </h2>
+              <p class="text-sm mb-4">${error.message}</p>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    // アプリの読み込みと起動を実行
+    loadApp();
+  </script>
+</body>
+</html>
