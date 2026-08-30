@@ -697,24 +697,24 @@ Mペース+0.5
         const isOoana = odds >= 30.0 && totalP >= 4.0;
         const isChuana = odds >= 15.0 && totalP >= 6.0;
 
-        // Tag definitions strictly per exact rules
-        if (isOoana && isTopP) {
-          return { tag: '⚡神穴馬', bg: 'bg-purple-600 text-white', textClass: 'text-purple-300 font-bold', cellBg: 'bg-gradient-to-r from-purple-700/40 to-indigo-700/40' };
-        }
-        if (isChuana && isTopP) {
-          return { tag: '👹鬼穴馬', bg: 'bg-red-600 text-white', textClass: 'text-red-300 font-bold', cellBg: 'bg-gradient-to-r from-red-700/40 to-orange-700/40' };
-        }
+        // Tag definitions with exact priority order requested
         if (isFirstFav && isTopP) {
           return { tag: '👑神鉄板', bg: 'bg-amber-400 text-slate-950', textClass: 'text-amber-300 font-bold', cellBg: 'bg-gradient-to-r from-amber-500/30 to-yellow-500/30' };
-        }
-        if (isFirstFav && isTop3P) {
-          return { tag: '✨準鉄板', bg: 'bg-blue-600 text-white', textClass: 'text-blue-300 font-bold', cellBg: 'bg-gradient-to-r from-blue-600/30 to-indigo-600/30' };
         }
         if (odds >= 1.0 && odds < 2.0) {
           return { tag: '🛡️鉄板馬', bg: 'bg-emerald-600 text-white', textClass: 'text-emerald-300 font-bold', cellBg: 'bg-gradient-to-r from-emerald-600/30 to-teal-600/30' };
         }
+        if (isFirstFav && isTop3P) {
+          return { tag: '✨準鉄板', bg: 'bg-blue-600 text-white', textClass: 'text-blue-300 font-bold', cellBg: 'bg-gradient-to-r from-blue-600/30 to-indigo-600/30' };
+        }
+        if (isOoana && isTopP) {
+          return { tag: '⚡神穴馬', bg: 'bg-purple-600 text-white', textClass: 'text-purple-300 font-bold', cellBg: 'bg-gradient-to-r from-purple-700/40 to-indigo-700/40' };
+        }
         if (isOoana) {
           return { tag: '💣大穴馬', bg: 'bg-purple-500 text-white', textClass: 'text-purple-300 font-bold', cellBg: 'bg-gradient-to-r from-purple-600/30 to-indigo-600/30' };
+        }
+        if (isChuana && isTopP) {
+          return { tag: '👹鬼穴馬', bg: 'bg-red-600 text-white', textClass: 'text-red-300 font-bold', cellBg: 'bg-gradient-to-r from-red-700/40 to-orange-700/40' };
         }
         if (isChuana) {
           return { tag: '🔥中穴馬', bg: 'bg-orange-500 text-white', textClass: 'text-orange-300 font-bold', cellBg: 'bg-gradient-to-r from-orange-600/30 to-amber-600/30' };
