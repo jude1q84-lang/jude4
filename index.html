@@ -1,91 +1,43 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>馬柱アナライザー Pro</title>
-  
-  <!-- Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- ESM Import Map for React & Lucide Icons -->
-  <script type="importmap">
-    {
-      "imports": {
-        "react": "https://esm.sh/react@18.2.0",
-        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-        "lucide-react": "https://esm.sh/lucide-react@0.350.0"
-      }
-    }
-  </script>
+import React, { useState, useRef, useEffect } from 'react';
+import { 
+  Trophy, RotateCcw, Sparkles, X,
+  ArrowUpDown, Cpu, Info, Plus, CheckCircle2, AlertCircle, Zap
+} from 'lucide-react';
 
-  <!-- Babel Standalone for runtime JSX compilation -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+const GEMINI_API_KEY = ""; // Provided at runtime
 
-  <style>
-    .loader {
-      border: 4px solid #334155;
-      border-top: 4px solid #8b5cf6;
-      border-radius: 50%;
-      width: 40px;
-      height: 40px;
-      animation: spin 1s linear infinite;
-    }
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-  </style>
-</head>
-<body class="bg-slate-900 min-h-screen text-slate-100">
-  <div id="root">
-    <div class="flex flex-col items-center justify-center min-h-screen">
-      <div class="loader mb-4"></div>
-      <p class="text-slate-400 font-medium">システムを起動中...</p>
-    </div>
-  </div>
+const STORAGE_KEY = "horse_analyzer_pro_data_v2";
 
-  <script type="text/babel" data-type="module">
-    import React, { useState, useRef, useEffect } from 'react';
-    import { createRoot } from 'react-dom/client';
-    import { 
-      Trophy, RotateCcw, Sparkles, X,
-      ArrowUpDown, Cpu, Info, Plus, CheckCircle2, AlertCircle, Zap, Key
-    } from 'lucide-react';
+const WAKU_COLORS = {
+  1: { badge: 'bg-slate-100 text-slate-900 border border-slate-300' },
+  2: { badge: 'bg-gray-900 text-white border border-gray-700' },
+  3: { badge: 'bg-red-600 text-white' },
+  4: { badge: 'bg-blue-600 text-white' },
+  5: { badge: 'bg-yellow-400 text-gray-950 font-bold' },
+  6: { badge: 'bg-green-600 text-white' },
+  7: { badge: 'bg-orange-500 text-white' },
+  8: { badge: 'bg-pink-500 text-white' }
+};
 
-    const API_KEY_STORAGE_KEY = "horse_analyzer_pro_user_gemini_api_key";
-    const STORAGE_KEY = "horse_analyzer_pro_data_v2";
+const BIAS_PATTERNS = [
+  { id: 'SenkouFlat', label: '先行バイアス（枠フラット）' },
+  { id: 'SashiFlat', label: '差しバイアス（枠フラット）' },
+  { id: 'UchiFlat', label: '内バイアス（脚質フラット）' },
+  { id: 'SotoFlat', label: '外バイアス（脚質フラット）' },
+  { id: 'UchiSenkou', label: '内先行バイアス' },
+  { id: 'UchiSashi', label: '内差しバイアス' },
+  { id: 'SotoSenkou', label: '外先行バイアス' },
+  { id: 'SotoSashi', label: '外差しバイアス' },
+  { id: 'Flat', label: 'フラット' }
+];
 
-    const WAKU_COLORS = {
-      1: { badge: 'bg-slate-100 text-slate-900 border border-slate-300' },
-      2: { badge: 'bg-gray-900 text-white border border-gray-700' },
-      3: { badge: 'bg-red-600 text-white' },
-      4: { badge: 'bg-blue-600 text-white' },
-      5: { badge: 'bg-yellow-400 text-gray-950 font-bold' },
-      6: { badge: 'bg-green-600 text-white' },
-      7: { badge: 'bg-orange-500 text-white' },
-      8: { badge: 'bg-pink-500 text-white' }
-    };
+const HEADER_OPTIONS = [
+  '騎手', '厩舎', '血統', '条件', '本紙', '藤村', '古澤', 
+  '浅野', 'CP', 'マリア', '馬場', '総合', '上昇', '逃げ', '差し', '調教', '平均', '距離', 'コース'
+];
 
-    const BIAS_PATTERNS = [
-      { id: 'SenkouFlat', label: '先行バイアス（枠フラット）' },
-      { id: 'SashiFlat', label: '差しバイアス（枠フラット）' },
-      { id: 'UchiFlat', label: '内バイアス（脚質フラット）' },
-      { id: 'SotoFlat', label: '外バイアス（脚質フラット）' },
-      { id: 'UchiSenkou', label: '内先行バイアス' },
-      { id: 'UchiSashi', label: '内差しバイアス' },
-      { id: 'SotoSenkou', label: '外先行バイアス' },
-      { id: 'SotoSashi', label: '外差しバイアス' },
-      { id: 'Flat', label: 'フラット' }
-    ];
-
-    const HEADER_OPTIONS = [
-      '騎手', '厩舎', '血統', '条件', '本紙', '藤村', '古澤', 
-      '浅野', 'CP', 'マリア', '馬場', '総合', '上昇', '逃げ', '差し', '調教', '平均', '距離', 'コース'
-    ];
-
-    const DEFAULT_PROMPTS = {
-      step1: `提供された画像またはテキストから、出走馬の基本情報（馬番、馬名、オッズ、馬体重、騎手）およびレースの基本情報を正確に抽出してください。
+const DEFAULT_PROMPTS = {
+  step1: `提供された画像またはテキストから、出走馬の基本情報（馬番、馬名、オッズ、馬体重、騎手）およびレースの基本情報を正確に抽出してください。
 
 【1. レース基本情報】
 ・raceCondition: レース名や条件、コース・距離（例: "3歳未勝利 芝1600m"）
@@ -113,7 +65,7 @@
   ]
 }`,
 
-      step2: `提供された画像またはテキストから近4走データを抽出し、指定バイアスルールに従ってバイアスポイント（biasP）を正確に算定してください。
+  step2: `提供された画像またはテキストから近4走データを抽出し、指定バイアスルールに従ってバイアスポイント（biasP）を正確に算定してください。
 3走しかデータがない場合は3走。
 
 ■ 今回の指定バイアス：［ {CURRENT_BIAS} ］
@@ -257,7 +209,7 @@ Mペース+0.5
   }
 ]`,
 
-      step3Local: `■ 地方競馬【ブーストポイント最終確定版】
+  step3Local: `■ 地方競馬【ブーストポイント最終確定版】
 ==================================================
 
 【1】道悪（※基本情報の馬場状態が「重」または「不良」の場合のみ自動加算）
@@ -335,7 +287,7 @@ Mペース+0.5
 水沢1300→阿部、山本政聡、塚本、小林、鈴木
 水沢1400→小林、坂井、高橋、山本政聡、鈴木
 水沢1600→岩本、高橋、高松、鈴木、関本
-高知1300→城野、岡村,郷間、山崎雅由、畑中
+高知1300→城野、岡村、郷間、山崎雅由、畑中
 高知1400→城野、多田羅、佐原、山崎雅由、畑中
 高知1600以上→佐原、岡、城野、多田羅、近藤
 佐賀900→小松
@@ -350,7 +302,7 @@ Mペース+0.5
   { "umaban": 1, "boostP": 1.0 }
 ]`,
 
-      step3Central: `■ JRAブーストポイント【確定リスト】
+  step3Central: `■ JRAブーストポイント【確定リスト】
 ================================
 
 【1】道悪（※基本情報の馬場状態が「重」または「不良」の場合のみ自動加算）
@@ -415,1271 +367,1181 @@ Mペース+0.5
 [
   { "umaban": 1, "boostP": 1.5 }
 ]`
-    };
+};
 
-    const roundToHalf = (val) => {
-      const num = parseFloat(val);
-      if (isNaN(num)) return 0;
-      return Math.round(num * 2) / 2;
-    };
+const roundToHalf = (val) => {
+  const num = parseFloat(val);
+  if (isNaN(num)) return 0;
+  return Math.round(num * 2) / 2;
+};
 
-    function App() {
-      // ユーザー設定のAPIキーをlocalStorageから読み込み
-      const [apiKey, setApiKey] = useState(() => localStorage.getItem(API_KEY_STORAGE_KEY) || "");
-      const [showApiKeyModal, setShowApiKeyModal] = useState(false);
-      const [tempApiKey, setTempApiKey] = useState("");
-
-      const handleSaveApiKey = () => {
-        const trimmed = tempApiKey.trim();
-        setApiKey(trimmed);
-        localStorage.setItem(API_KEY_STORAGE_KEY, trimmed);
-        setShowApiKeyModal(false);
-      };
-
-      function calculateWaku(umaban, total) {
-        if (total <= 0 || umaban > total) return 1;
-        if (total <= 8) return umaban;
-        
-        const base = Math.floor(total / 8);
-        const remainder = total % 8;
-        
-        let currentUmaban = 0;
-        for (let waku = 1; waku <= 8; waku++) {
-          const capacity = (waku >= 9 - remainder) ? base + 1 : base;
-          currentUmaban += capacity;
-          if (umaban <= currentUmaban) {
-            return waku;
-          }
-        }
-        return 8;
+export default function App() {
+  function calculateWaku(umaban, total) {
+    if (total <= 0 || umaban > total) return 1;
+    if (total <= 8) return umaban;
+    
+    const base = Math.floor(total / 8);
+    const remainder = total % 8;
+    
+    let currentUmaban = 0;
+    for (let waku = 1; waku <= 8; waku++) {
+      const capacity = (waku >= 9 - remainder) ? base + 1 : base;
+      currentUmaban += capacity;
+      if (umaban <= currentUmaban) {
+        return waku;
       }
+    }
+    return 8;
+  }
 
-      const createInitialHorses = (count) => {
-        return Array.from({ length: count }, (_, i) => ({
-          umaban: i + 1,
-          waku: calculateWaku(i + 1, count),
-          name: `馬名${i + 1}`,
-          odds: '0.0',
-          weight: '480',
-          jockey: '騎手',
-          manualBiasP: 0.0,
-          boostP: 0.0,
-          customCheck1: false,
-          customCheck2: false,
-          customCheck3: false,
-          run1: '-',
-          run2: '-',
-          run3: '-',
-          run4: '-'
-        }));
-      };
+  const createInitialHorses = (count) => {
+    return Array.from({ length: count }, (_, i) => ({
+      umaban: i + 1,
+      waku: calculateWaku(i + 1, count),
+      name: `馬名${i + 1}`,
+      odds: '0.0',
+      weight: '480',
+      jockey: '騎手',
+      manualBiasP: 0.0,
+      boostP: 0.0,
+      customCheck1: false,
+      customCheck2: false,
+      customCheck3: false,
+      run1: '-',
+      run2: '-',
+      run3: '-',
+      run4: '-'
+    }));
+  };
 
-      const [numHorses, setNumHorses] = useState(() => {
-        try {
-          const saved = localStorage.getItem(STORAGE_KEY);
-          if (saved) {
-            const parsed = JSON.parse(saved);
-            if (parsed.numHorses) return parsed.numHorses;
-          }
-        } catch (e) {}
-        return 18;
-      });
+  const [numHorses, setNumHorses] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.numHorses) return parsed.numHorses;
+      }
+    } catch (e) {}
+    return 18;
+  });
 
-      const [biasType, setBiasType] = useState(() => {
-        try {
-          const saved = localStorage.getItem(STORAGE_KEY);
-          if (saved) {
-            const parsed = JSON.parse(saved);
-            if (parsed.biasType) return parsed.biasType;
-          }
-        } catch (e) {}
-        return 'UchiSenkou';
-      });
+  const [biasType, setBiasType] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.biasType) return parsed.biasType;
+      }
+    } catch (e) {}
+    return 'UchiSenkou';
+  });
 
-      const [highlightedUmaban, setHighlightedUmaban] = useState(null);
-      const [sortByPoints, setSortByPoints] = useState(false);
-      const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [highlightedUmaban, setHighlightedUmaban] = useState(null);
+  const [sortByPoints, setSortByPoints] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
-      const [customHeader1, setCustomHeader1] = useState(() => {
-        try {
-          const saved = localStorage.getItem(STORAGE_KEY);
-          if (saved) return JSON.parse(saved).customHeader1 || '騎手';
-        } catch (e) {}
-        return '騎手';
-      });
+  const [customHeader1, setCustomHeader1] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) return JSON.parse(saved).customHeader1 || '騎手';
+    } catch (e) {}
+    return '騎手';
+  });
 
-      const [customHeader2, setCustomHeader2] = useState(() => {
-        try {
-          const saved = localStorage.getItem(STORAGE_KEY);
-          if (saved) return JSON.parse(saved).customHeader2 || '厩舎';
-        } catch (e) {}
-        return '厩舎';
-      });
+  const [customHeader2, setCustomHeader2] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) return JSON.parse(saved).customHeader2 || '厩舎';
+    } catch (e) {}
+    return '厩舎';
+  });
 
-      const [customHeader3, setCustomHeader3] = useState(() => {
-        try {
-          const saved = localStorage.getItem(STORAGE_KEY);
-          if (saved) return JSON.parse(saved).customHeader3 || '血統';
-        } catch (e) {}
-        return '血統';
-      });
+  const [customHeader3, setCustomHeader3] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) return JSON.parse(saved).customHeader3 || '血統';
+    } catch (e) {}
+    return '血統';
+  });
 
-      const [raceMeta, setRaceMeta] = useState(() => {
-        try {
-          const saved = localStorage.getItem(STORAGE_KEY);
-          if (saved) {
-            const parsed = JSON.parse(saved);
-            if (parsed.raceMeta) {
-              return {
-                ...parsed.raceMeta,
-                blinker1: parsed.raceMeta.blinker1 || '',
-                blinker2: parsed.raceMeta.blinker2 || '',
-                blinker3: parsed.raceMeta.blinker3 || ''
-              };
-            }
-          }
-        } catch (e) {}
-        return {
-          raceCondition: '朱鷺S 芝1400m',
-          raceNumber: '7R',
-          trackCondition: '良',
-          biasSummary: '枠:内枠が対象レース数×2の80%以上 / 脚質:先行Ptがダブルスコア ➔ 内先行バイアス',
-          isFastLateBias: false,
-          blinker1: '',
-          blinker2: '',
-          blinker3: ''
-        };
-      });
-
-      const [aiMissingMessage, setAiMissingMessage] = useState(() => {
-        try {
-          const saved = localStorage.getItem(STORAGE_KEY);
-          if (saved) return JSON.parse(saved).aiMissingMessage || '';
-        } catch (e) {}
-        return '';
-      });
-
-      const [imageFiles, setImageFiles] = useState([]);
-      const [pastedText, setPastedText] = useState(() => {
-        try {
-          const saved = localStorage.getItem(STORAGE_KEY);
-          if (saved) return JSON.parse(saved).pastedText || '';
-        } catch (e) {}
-        return '';
-      });
-
-      const [isModalOpen, setIsModalOpen] = useState(false);
-      const [activeStepTab, setActiveStepTab] = useState(1);
-      const [boostMode, setBoostMode] = useState('Central');
-      const [prompts, setPrompts] = useState(() => {
-        try {
-          const saved = localStorage.getItem(STORAGE_KEY);
-          if (saved) {
-            const parsed = JSON.parse(saved);
-            if (parsed.prompts) return parsed.prompts;
-          }
-        } catch (e) {}
-        return DEFAULT_PROMPTS;
-      });
-
-      const [isAnalyzing, setIsAnalyzing] = useState(false);
-      const [aiError, setAiError] = useState('');
-      const [analysisStatus, setAnalysisStatus] = useState('');
-
-      const abortControllerRef = useRef(null);
-
-      const stopAnalysis = () => {
-        if (abortControllerRef.current) {
-          abortControllerRef.current.abort();
-          abortControllerRef.current = null;
-          setIsAnalyzing(false);
-          setAiError('解析が中止（キャンセル）されました。');
-          setAnalysisStatus('');
-        }
-      };
-
-      const [horses, setHorses] = useState(() => {
-        try {
-          const saved = localStorage.getItem(STORAGE_KEY);
-          if (saved) {
-            const parsed = JSON.parse(saved);
-            if (Array.isArray(parsed.horses) && parsed.horses.length > 0) {
-              return parsed.horses;
-            }
-          }
-        } catch (e) {}
-        return createInitialHorses(18);
-      });
-
-      useEffect(() => {
-        try {
-          const dataToSave = {
-            numHorses,
-            biasType,
-            customHeader1,
-            customHeader2,
-            customHeader3,
-            raceMeta,
-            aiMissingMessage,
-            pastedText,
-            prompts,
-            horses
+  const [raceMeta, setRaceMeta] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.raceMeta) {
+          return {
+            ...parsed.raceMeta,
+            blinker1: parsed.raceMeta.blinker1 || '',
+            blinker2: parsed.raceMeta.blinker2 || '',
+            blinker3: parsed.raceMeta.blinker3 || ''
           };
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
-        } catch (e) {
-          console.error("Failed to save to localStorage:", e);
         }
-      }, [numHorses, biasType, customHeader1, customHeader2, customHeader3, raceMeta, aiMissingMessage, pastedText, prompts, horses]);
+      }
+    } catch (e) {}
+    return {
+      raceCondition: '朱鷺S 芝1400m',
+      raceNumber: '7R',
+      trackCondition: '良',
+      biasSummary: '枠:内枠が対象レース数×2の80%以上 / 脚質:先行Ptがダブルスコア ➔ 内先行バイアス',
+      isFastLateBias: false,
+      blinker1: '',
+      blinker2: '',
+      blinker3: ''
+    };
+  });
 
-      const handleNumHorsesChange = (newCount) => {
-        const count = parseInt(newCount, 10);
-        setNumHorses(count);
-        setHorses(prev => {
-          const updated = [];
-          for (let i = 1; i <= count; i++) {
-            const existing = prev.find(h => h.umaban === i);
-            if (existing) {
-              updated.push({ ...existing, waku: calculateWaku(i, count) });
-            } else {
-              updated.push({
-                umaban: i,
-                waku: calculateWaku(i, count),
-                name: `馬名${i}`,
-                odds: '0.0',
-                weight: '480',
-                jockey: '騎手',
-                manualBiasP: 0.0,
-                boostP: 0.0,
-                customCheck1: false,
-                customCheck2: false,
-                customCheck3: false,
-                run1: '-',
-                run2: '-',
-                run3: '-',
-                run4: '-'
-              });
-            }
-          }
-          return updated;
-        });
+  const [aiMissingMessage, setAiMissingMessage] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) return JSON.parse(saved).aiMissingMessage || '';
+    } catch (e) {}
+    return '';
+  });
+
+  const [imageFiles, setImageFiles] = useState([]);
+  const [pastedText, setPastedText] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) return JSON.parse(saved).pastedText || '';
+    } catch (e) {}
+    return '';
+  });
+
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [activeStepTab, setActiveStepTab] = useState(1);
+  const [boostMode, setBoostMode] = useState('Central');
+  const [prompts, setPrompts] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.prompts) return parsed.prompts;
+      }
+    } catch (e) {}
+    return DEFAULT_PROMPTS;
+  });
+
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [aiError, setAiError] = useState('');
+  const [analysisStatus, setAnalysisStatus] = useState('');
+
+  const abortControllerRef = useRef(null);
+
+  const stopAnalysis = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      setIsAnalyzing(false);
+      setAiError('解析が中止（キャンセル）されました。');
+      setAnalysisStatus('');
+    }
+  };
+
+  const [horses, setHorses] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed.horses) && parsed.horses.length > 0) {
+          return parsed.horses;
+        }
+      }
+    } catch (e) {}
+    return createInitialHorses(18);
+  });
+
+  useEffect(() => {
+    try {
+      const dataToSave = {
+        numHorses,
+        biasType,
+        customHeader1,
+        customHeader2,
+        customHeader3,
+        raceMeta,
+        aiMissingMessage,
+        pastedText,
+        prompts,
+        horses
       };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+    } catch (e) {
+      console.error("Failed to save to localStorage:", e);
+    }
+  }, [numHorses, biasType, customHeader1, customHeader2, customHeader3, raceMeta, aiMissingMessage, pastedText, prompts, horses]);
 
-      const calculateTotalP = (horse) => {
-        const bias = roundToHalf(horse.manualBiasP ?? 0);
-        const boost = roundToHalf(horse.boostP ?? 0);
-        const checkPt = (horse.customCheck1 ? 1.0 : 0) + (horse.customCheck2 ? 1.0 : 0) + (horse.customCheck3 ? 1.0 : 0);
-        return roundToHalf(bias + boost + checkPt).toFixed(1);
-      };
-
-      const getHorseBadges = (horse) => {
-        const totalP = parseFloat(calculateTotalP(horse));
-        const odds = parseFloat(horse.odds) || 0;
-
-        const allP = horses.slice(0, numHorses).map(h => parseFloat(calculateTotalP(h)));
-        const maxP = Math.max(...allP);
-        const sortedP = [...allP].sort((a, b) => b - a);
-        const thirdHighestP = sortedP[2] ?? 0;
-
-        const isTeppan = totalP === maxP && totalP > 0 && odds > 0 && odds <= 3.0;
-        const isOoana = odds >= 30.0 && totalP >= 4.0;
-        const isAnajiku = odds >= 15.0 && totalP >= thirdHighestP && totalP > 0;
-
-        return { isTeppan, isOoana, isAnajiku };
-      };
-
-      const sortedHorses = [...horses].sort((a, b) => {
-        if (sortByPoints) {
-          return parseFloat(calculateTotalP(b)) - parseFloat(calculateTotalP(a));
+  const handleNumHorsesChange = (newCount) => {
+    const count = parseInt(newCount, 10);
+    setNumHorses(count);
+    setHorses(prev => {
+      const updated = [];
+      for (let i = 1; i <= count; i++) {
+        const existing = prev.find(h => h.umaban === i);
+        if (existing) {
+          updated.push({ ...existing, waku: calculateWaku(i, count) });
+        } else {
+          updated.push({
+            umaban: i,
+            waku: calculateWaku(i, count),
+            name: `馬名${i}`,
+            odds: '0.0',
+            weight: '480',
+            jockey: '騎手',
+            manualBiasP: 0.0,
+            boostP: 0.0,
+            customCheck1: false,
+            customCheck2: false,
+            customCheck3: false,
+            run1: '-',
+            run2: '-',
+            run3: '-',
+            run4: '-'
+          });
         }
-        return a.umaban - b.umaban;
-      });
-
-      const executeFullReset = () => {
-        try {
-          localStorage.removeItem(STORAGE_KEY);
-        } catch (e) {}
-        setNumHorses(18);
-        setHorses(createInitialHorses(18));
-        setImageFiles([]);
-        setPastedText('');
-        setAiError('');
-        setAnalysisStatus('');
-        setAiMissingMessage('');
-        setPrompts(DEFAULT_PROMPTS);
-        setRaceMeta({
-          raceCondition: '朱鷺S 芝1400m',
-          raceNumber: '7R',
-          trackCondition: '良',
-          biasSummary: '枠:内枠が対象レース数×2の80%以上 / 脚質:先行Ptがダブルスコア ➔ 内先行バイアス',
-          isFastLateBias: false,
-          blinker1: '',
-          blinker2: '',
-          blinker3: ''
-        });
-        setShowResetConfirm(false);
-      };
-
-      const addImageFiles = (files) => {
-        if (!files || files.length === 0) return;
-        const newItems = Array.from(files).map(file => ({
-          id: Math.random().toString(36).substr(2, 9),
-          file,
-          url: URL.createObjectURL(file)
-        }));
-        setImageFiles(prev => [...prev, ...newItems]);
-      };
-
-      const removeImageFile = (id) => {
-        setImageFiles(prev => prev.filter(item => item.id !== id));
-      };
-
-      const handlePaste = (e) => {
-        const items = e.clipboardData?.items;
-        if (!items) return;
-        const newFiles = [];
-        for (let i = 0; i < items.length; i++) {
-          if (items[i].type.indexOf('image') !== -1) {
-            const file = items[i].getAsFile();
-            if (file) newFiles.push(file);
-          }
-        }
-        if (newFiles.length > 0) addImageFiles(newFiles);
-      };
-
-      const fileToPart = (fileObj) => {
-        return new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const base64Data = reader.result.split(',')[1];
-            resolve({
-              inlineData: {
-                mimeType: fileObj.file.type || 'image/png',
-                data: base64Data
-              }
-            });
-          };
-          reader.onerror = reject;
-          reader.readAsDataURL(fileObj.file);
-        });
-      };
-
-      const callGeminiWithImagesAndText = async (promptText) => {
-        if (!apiKey) {
-          setTempApiKey("");
-          setShowApiKeyModal(true);
-          throw new Error('Gemini APIキーが設定されていません。右上の「API設定」ボタンからキーを入力してください。');
-        }
-
-        if (imageFiles.length === 0 && !pastedText.trim()) {
-          throw new Error('スクショ画像を追加するか、テキストを入力してください。');
-        }
-
-        abortControllerRef.current = new AbortController();
-        const { signal } = abortControllerRef.current;
-
-        const imageParts = await Promise.all(imageFiles.map(f => fileToPart(f)));
-        let fullPrompt = promptText;
-        if (pastedText.trim()) {
-          fullPrompt += `\n\n【補足入力テキストデータ】:\n${pastedText.trim()}`;
-        }
-
-        const contents = [
-          {
-            role: 'user',
-            parts: [{ text: fullPrompt }, ...imageParts]
-          }
-        ];
-
-        let response;
-        let attempt = 0;
-        const delays = [1000, 2000, 4000];
-
-        while (attempt <= 3) {
-          if (signal.aborted) throw new Error('AbortError');
-          try {
-            // gemini-3.6-flash を使用
-            response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                contents,
-                generationConfig: { responseMimeType: "application/json" }
-              }),
-              signal
-            });
-            if (response.ok) break;
-          } catch (err) {
-            if (err.name === 'AbortError') throw err;
-          }
-          if (attempt < delays.length) {
-            if (signal.aborted) throw new Error('AbortError');
-            await new Promise(r => setTimeout(r, delays[attempt]));
-          }
-          attempt++;
-        }
-
-        if (signal.aborted) throw new Error('AbortError');
-
-        if (!response || !response.ok) {
-          const errBody = await response.json().catch(() => ({}));
-          throw new Error(errBody.error?.message || 'AIとの通信に失敗しました。APIキーを確認してください。');
-        }
-
-        const result = await response.json();
-        const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!text) throw new Error('AIからレスポンスを取得できませんでした。');
-
-        const cleanedText = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-        return JSON.parse(cleanedText);
-      };
-
-      const runStepAnalysis = async (stepNum) => {
-        if (!apiKey) {
-          setTempApiKey("");
-          setShowApiKeyModal(true);
-          return;
-        }
-
-        setIsAnalyzing(true);
-        setAiError('');
-
-        try {
-          if (stepNum === 1) {
-            setAnalysisStatus('① 基本情報（レース番号・オッズ・体重・騎手）を抽出中...');
-            const res = await callGeminiWithImagesAndText(prompts.step1);
-
-            setRaceMeta(prev => ({
-              ...prev,
-              raceCondition: res.raceCondition || prev.raceCondition,
-              raceNumber: res.raceNumber || prev.raceNumber,
-              trackCondition: res.trackCondition || prev.trackCondition
-            }));
-
-            if (res.missingInfoMessage) {
-              setAiMissingMessage(res.missingInfoMessage);
-            }
-
-            if (Array.isArray(res.horses) && res.horses.length > 0) {
-              const count = Math.min(Math.max(res.horses.length, 1), 18);
-              setNumHorses(count);
-
-              setHorses(prev => Array.from({ length: count }, (_, i) => {
-                const uNum = i + 1;
-                const matched = res.horses.find(item => Number(item.umaban) === uNum) || res.horses[i];
-                const existing = prev.find(h => h.umaban === uNum);
-
-                return {
-                  umaban: uNum,
-                  waku: calculateWaku(uNum, count),
-                  name: matched?.name || existing?.name || `馬名${uNum}`,
-                  odds: matched?.odds !== undefined ? String(matched.odds) : (existing?.odds || '0.0'),
-                  weight: matched?.weight || existing?.weight || '480',
-                  jockey: matched?.jockey || existing?.jockey || '騎手',
-                  manualBiasP: existing?.manualBiasP ?? 0.0,
-                  boostP: existing?.boostP ?? 0.0,
-                  customCheck1: existing?.customCheck1 || false,
-                  customCheck2: existing?.customCheck2 || false,
-                  customCheck3: existing?.customCheck3 || false,
-                  run1: existing?.run1 || '-',
-                  run2: existing?.run2 || '-',
-                  run3: existing?.run3 || '-',
-                  run4: existing?.run4 || '-'
-                };
-              }));
-            }
-          } else if (stepNum === 2) {
-            setAnalysisStatus('② 選択バイアスの定義に従い 0.5 単位でバイアスPを算定中...');
-            const currentBiasLabel = BIAS_PATTERNS.find(b => b.id === biasType)?.label || biasType;
-            const raceClass = raceMeta.raceCondition || 'G3';
-            const formattedPrompt = prompts.step2
-              .replace('{CURRENT_BIAS}', currentBiasLabel)
-              .replace('{RACE_CLASS}', raceClass);
-
-            const res = await callGeminiWithImagesAndText(formattedPrompt);
-
-            if (Array.isArray(res)) {
-              setHorses(prev => prev.map(h => {
-                const matched = res.find(item => Number(item.umaban) === h.umaban);
-                if (matched) {
-                  return { 
-                    ...h, 
-                    manualBiasP: matched.biasP !== undefined ? roundToHalf(matched.biasP) : h.manualBiasP,
-                    run1: matched.run1 || h.run1,
-                    run2: matched.run2 || h.run2,
-                    run3: matched.run3 || h.run3,
-                    run4: matched.run4 || h.run4
-                  };
-                }
-                return h;
-              }));
-            }
-          } else if (stepNum === 3) {
-            setAnalysisStatus(`③ ブーストP (${boostMode === 'Local' ? '地方' : '中央'}) を算定中...`);
-            const targetPrompt = boostMode === 'Local' ? prompts.step3Local : prompts.step3Central;
-            
-            let contextPrefix = `【現在のレース状況】:\n馬場状態: ${raceMeta.trackCondition}, 高速上がりバイアス: ${raceMeta.isFastLateBias ? '認定あり' : 'なし'}, 指定バイアス: ${biasType}\n\n`;
-            const res = await callGeminiWithImagesAndText(contextPrefix + targetPrompt);
-
-            if (Array.isArray(res)) {
-              setHorses(prev => prev.map(h => {
-                const matched = res.find(item => Number(item.umaban) === h.umaban);
-                if (matched && matched.boostP !== undefined) {
-                  return { ...h, boostP: roundToHalf(matched.boostP) };
-                }
-                return h;
-              }));
-            }
-          }
-          setAnalysisStatus(`ステップ${stepNum}の解析が完了しました！`);
-        } catch (err) {
-          if (err.message === 'AbortError' || err.name === 'AbortError') {
-            // Cancelled explicitly
-          } else {
-            setAiError(err.message || `ステップ${stepNum}の解析に失敗しました。`);
-          }
-        } finally {
-          setIsAnalyzing(false);
-          abortControllerRef.current = null;
-        }
-      };
-
-      const runAllStepsSequential = async () => {
-        if (!apiKey) {
-          setTempApiKey("");
-          setShowApiKeyModal(true);
-          return;
-        }
-        if (imageFiles.length === 0 && !pastedText.trim()) {
-          setAiError('スクショ画像を追加するかテキストを入力してください。');
-          return;
-        }
-        setIsAnalyzing(true);
-        setAiError('');
-
-        try {
-          setAnalysisStatus('【1/3】① 基本情報抽出を実行中...');
-          await runStepAnalysis(1);
-
-          setAnalysisStatus('【2/3】② バイアスポイント算定を実行中...');
-          await runStepAnalysis(2);
-
-          setAnalysisStatus('【3/3】③ ブーストポイント算定を実行中...');
-          await runStepAnalysis(3);
-
-          setAnalysisStatus('全ステップの解析が完了しました！');
-          setIsModalOpen(false);
-        } catch (err) {
-          if (err.message !== 'AbortError' && err.name !== 'AbortError') {
-            setAiError('一括実行中にエラーが発生しました。個別ステップでお試しください。');
-          }
-        } finally {
-          setIsAnalyzing(false);
-        }
-      };
-
-      return (
-        <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col font-sans">
-          {/* Header */}
-          <header className="bg-slate-800 border-b border-slate-700 px-3 sm:px-4 py-2 sticky top-0 z-30 shadow-md">
-            <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
-              <div className="flex items-center space-x-2">
-                <Trophy className="w-5 h-5 text-amber-400 shrink-0" />
-                <h1 className="text-base sm:text-xl font-bold text-amber-400 whitespace-nowrap">馬柱アナライザー Pro</h1>
-              </div>
-
-              <div className="flex items-center space-x-1 sm:space-x-2">
-                {/* API設定ボタン */}
-                <button
-                  onClick={() => { setTempApiKey(apiKey); setShowApiKeyModal(true); }}
-                  className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition border ${
-                    apiKey 
-                      ? 'bg-slate-700 text-slate-200 border-slate-600 hover:bg-slate-600' 
-                      : 'bg-amber-500/20 text-amber-300 border-amber-500/60 animate-pulse'
-                  }`}
-                  title="Gemini APIキー設定"
-                >
-                  <Key className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">{apiKey ? 'API設定済' : 'API設定'}</span>
-                </button>
-
-                <button
-                  onClick={() => setIsModalOpen(true)}
-                  className="flex items-center space-x-1 px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold rounded-lg shadow text-xs transition"
-                >
-                  <Cpu className="w-3.5 h-3.5 text-purple-300 animate-pulse" />
-                  <span>📸 AI解析</span>
-                </button>
-
-                <button
-                  onClick={() => setSortByPoints(!sortByPoints)}
-                  className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition ${
-                    sortByPoints ? 'bg-amber-500 text-slate-950' : 'bg-slate-700 text-slate-200 hover:bg-slate-600'
-                  }`}
-                >
-                  <ArrowUpDown className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">{sortByPoints ? '合計P順' : '馬番順'}</span>
-                  <span className="sm:hidden">{sortByPoints ? 'P順' : '馬番'}</span>
-                </button>
-
-                {showResetConfirm ? (
-                  <div className="flex items-center space-x-1 bg-red-950 border border-red-700 rounded-lg p-1 text-xs">
-                    <span className="text-red-200 font-bold px-1">全リセット？</span>
-                    <button
-                      onClick={executeFullReset}
-                      className="bg-red-600 text-white px-2 py-0.5 rounded font-bold hover:bg-red-500"
-                    >
-                      はい
-                    </button>
-                    <button
-                      onClick={() => setShowResetConfirm(false)}
-                      className="bg-slate-700 text-slate-200 px-1.5 py-0.5 rounded hover:bg-slate-600"
-                    >
-                      いいえ
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setShowResetConfirm(true)}
-                    className="p-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg transition"
-                    title="全初期化"
-                  >
-                    <RotateCcw className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-            </div>
-          </header>
-
-          {/* Main Container */}
-          <main className="flex-1 max-w-7xl w-full mx-auto p-2 sm:p-4 space-y-3">
-            {/* Missing Info / AI Notification Message Banner */}
-            {aiMissingMessage && (
-              <section className="bg-amber-950/90 border-2 border-amber-500/80 rounded-xl p-3 px-4 text-amber-200 text-xs sm:text-sm flex items-center justify-between shadow-lg">
-                <div className="flex items-center space-x-2">
-                  <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 animate-bounce" />
-                  <div>
-                    <strong className="text-amber-300">⚠️ AIからの不足情報・注意事項メッセージ:</strong>
-                    <p className="mt-0.5 text-amber-100">{aiMissingMessage}</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setAiMissingMessage('')}
-                  className="ml-2 text-slate-400 hover:text-white p-1"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </section>
-            )}
-
-            {/* Race Information Banner */}
-            <section className="bg-slate-800/90 border border-slate-700 rounded-xl p-3 shadow-lg space-y-2.5">
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs border-b border-slate-700/80 pb-2">
-                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                  <span className="font-bold text-amber-400 flex items-center space-x-1">
-                    <Info className="w-3.5 h-3.5" />
-                    <span>レース概要:</span>
-                  </span>
-                  <span className="text-slate-200">条件: <strong className="text-white font-semibold">{raceMeta.raceCondition}</strong></span>
-                  <span className="text-slate-200">馬場: <strong className="text-emerald-400 font-semibold">{raceMeta.trackCondition}</strong></span>
-                </div>
-                <div className="bg-purple-950/80 border border-purple-700/60 text-purple-200 px-2.5 py-1 rounded-full text-xs flex items-center space-x-1">
-                  <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-                  <span>AI傾向: <strong>{raceMeta.biasSummary}</strong></span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-12 gap-2 text-xs">
-                <div className="col-span-1 sm:col-span-2">
-                  <label className="block font-semibold text-slate-400 mb-1">出走頭数</label>
-                  <select
-                    value={numHorses}
-                    onChange={(e) => handleNumHorsesChange(e.target.value)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-slate-200 font-bold"
-                  >
-                    {Array.from({ length: 18 }, (_, i) => i + 1).map(n => (
-                      <option key={n} value={n}>{n}頭立て</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="col-span-1 sm:col-span-1">
-                  <label className="block font-semibold text-slate-400 mb-1 truncate">レース</label>
-                  <input
-                    type="text"
-                    value={raceMeta.raceNumber}
-                    onChange={(e) => setRaceMeta(prev => ({ ...prev, raceNumber: e.target.value }))}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-1 py-1.5 text-slate-200 font-bold text-center"
-                  />
-                </div>
-
-                <div className="col-span-1 sm:col-span-3">
-                  <label className="block font-semibold text-slate-400 mb-1">高速上がりバイアス</label>
-                  <button
-                    onClick={() => setRaceMeta(prev => ({ ...prev, isFastLateBias: !prev.isFastLateBias }))}
-                    className={`w-full py-1.5 px-2 rounded-lg font-bold border transition flex items-center justify-center space-x-1 ${
-                      raceMeta.isFastLateBias 
-                        ? 'bg-amber-500/20 border-amber-500 text-amber-300' 
-                        : 'bg-slate-900 border-slate-700 text-slate-400'
-                    }`}
-                  >
-                    <Zap className="w-3.5 h-3.5" />
-                    <span>{raceMeta.isFastLateBias ? '⚡ 認定あり' : 'なし (通常)'}</span>
-                  </button>
-                </div>
-
-                <div className="col-span-1 sm:col-span-3">
-                  <label className="block font-semibold text-slate-400 mb-1">バイアス傾向 (9種)</label>
-                  <select
-                    value={biasType}
-                    onChange={(e) => setBiasType(e.target.value)}
-                    className="w-full bg-slate-900 border border-amber-500/40 text-amber-300 font-bold rounded-lg px-2 py-1.5"
-                  >
-                    {BIAS_PATTERNS.map(p => (
-                      <option key={p.id} value={p.id}>{p.label}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="col-span-2 sm:col-span-3">
-                  <label className="block font-semibold text-slate-400 mb-1">初ブリンカー(馬番)</label>
-                  <div className="flex space-x-1">
-                    {[1, 2, 3].map(num => (
-                      <select
-                        key={`blinker${num}`}
-                        value={raceMeta[`blinker${num}`] || ''}
-                        onChange={(e) => setRaceMeta(prev => ({ ...prev, [`blinker${num}`]: e.target.value }))}
-                        className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-1 py-1.5 text-slate-200 font-bold text-center"
-                      >
-                        <option value="">-</option>
-                        {Array.from({ length: 18 }, (_, i) => i + 1).map(n => (
-                          <option key={n} value={n}>{n}</option>
-                        ))}
-                      </select>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            {}
-            <section className="bg-slate-800 border border-slate-700 rounded-xl shadow-xl overflow-hidden">
-              <div className="overflow-x-auto relative max-h-[68vh]">
-                <table className="w-full text-left border-collapse text-xs sm:text-sm">
-                  <thead className="bg-slate-900 text-slate-300 sticky top-0 z-20 shadow">
-                    <tr>
-                      <th className="py-2.5 px-1 text-center w-[36px] min-w-[36px] sticky left-0 z-30 bg-slate-900 border-r border-slate-800">馬番</th>
-                      <th className="py-2.5 px-1 text-center w-[36px] min-w-[36px] sticky left-[36px] z-30 bg-slate-900 border-r border-slate-800">枠番</th>
-                      <th className="py-2.5 px-2 min-w-[120px] sticky left-[72px] z-30 bg-slate-900 border-r border-slate-700">馬名</th>
-                      <th className="py-2.5 px-1 text-center min-w-[55px]">オッズ</th>
-                      <th className="py-2.5 px-1 text-center min-w-[60px]">体重</th>
-                      <th className="py-2.5 px-1 text-center min-w-[65px]">騎手</th>
-                      <th className="py-2.5 px-1 text-center min-w-[75px] text-amber-400 font-bold bg-slate-950">合計P</th>
-                      <th className="py-2.5 px-1 text-center min-w-[90px] bg-slate-850 text-amber-300">バイアスP (手入力可)</th>
-                      <th className="py-2.5 px-1 text-center min-w-[75px]">ブーストP</th>
-
-                      <th className="py-2.5 px-1 text-center min-w-[70px] bg-slate-850">
-                        <select
-                          value={customHeader1}
-                          onChange={(e) => setCustomHeader1(e.target.value)}
-                          className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded px-1 py-0.5 font-bold"
-                        >
-                          {HEADER_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                        </select>
-                      </th>
-                      <th className="py-2.5 px-1 text-center min-w-[70px] bg-slate-850">
-                        <select
-                          value={customHeader2}
-                          onChange={(e) => setCustomHeader2(e.target.value)}
-                          className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded px-1 py-0.5 font-bold"
-                        >
-                          {HEADER_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                        </select>
-                      </th>
-                      <th className="py-2.5 px-1 text-center min-w-[70px] bg-slate-850">
-                        <select
-                          value={customHeader3}
-                          onChange={(e) => setCustomHeader3(e.target.value)}
-                          className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded px-1 py-0.5 font-bold"
-                        >
-                          {HEADER_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                        </select>
-                      </th>
-
-                      <th className="py-2.5 px-2 text-center min-w-[100px]">前走</th>
-                      <th className="py-2.5 px-2 text-center min-w-[100px]">2走前</th>
-                      <th className="py-2.5 px-2 text-center min-w-[100px]">3走前</th>
-                      <th className="py-2.5 px-2 text-center min-w-[100px]">4走前</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-700/60">
-                    {sortedHorses.map((horse) => {
-                      const wakuStyle = WAKU_COLORS[horse.waku] || WAKU_COLORS[1];
-                      const isHighlighted = highlightedUmaban === horse.umaban;
-                      const { isTeppan, isOoana, isAnajiku } = getHorseBadges(horse);
-                      const totalP = calculateTotalP(horse);
-
-                      return (
-                        <tr
-                          key={horse.umaban}
-                          className={`transition-colors ${
-                            isHighlighted ? 'bg-amber-500/20' : 'hover:bg-slate-700/40'
-                          }`}
-                        >
-                          <td 
-                            onClick={() => setHighlightedUmaban(isHighlighted ? null : horse.umaban)}
-                            className="py-2 px-1 text-center font-extrabold cursor-pointer sticky left-0 z-10 bg-slate-900 border-r border-slate-800 text-slate-200"
-                          >
-                            {horse.umaban}
-                          </td>
-
-                          <td className="py-2 px-1 text-center sticky left-[36px] z-10 bg-slate-900 border-r border-slate-800">
-                            <span className={`inline-block w-5 h-5 rounded-full text-[11px] font-bold leading-5 ${wakuStyle.badge}`}>
-                              {horse.waku}
-                            </span>
-                          </td>
-
-                          <td className={`py-2 px-1.5 sticky left-[72px] z-10 bg-slate-900 border-r border-slate-700 ${
-                            isTeppan ? 'bg-gradient-to-r from-red-600/30 to-amber-600/30' :
-                            isOoana ? 'bg-gradient-to-r from-purple-600/30 to-indigo-600/30' :
-                            isAnajiku ? 'bg-gradient-to-r from-amber-500/30 to-amber-600/30' : ''
-                          }`}>
-                            <div className="flex items-center space-x-1">
-                              {isTeppan && <span className="bg-red-600 text-white text-[10px] px-1 rounded font-black shrink-0 animate-pulse">🛡️鉄板</span>}
-                              {isOoana && <span className="bg-purple-600 text-white text-[10px] px-1 rounded font-black shrink-0 animate-pulse">💣大穴</span>}
-                              {isAnajiku && !isOoana && <span className="bg-amber-400 text-slate-950 text-[10px] px-1 rounded font-black shrink-0 animate-pulse">🔥穴軸</span>}
-                              <input
-                                type="text"
-                                value={horse.name}
-                                onChange={(e) => {
-                                  const val = e.target.value;
-                                  setHorses(prev => prev.map(h => h.umaban === horse.umaban ? { ...h, name: val } : h));
-                                }}
-                                className={`w-full bg-transparent border-b border-transparent hover:border-slate-600 focus:border-amber-400 font-medium px-0.5 py-0.5 ${
-                                  isTeppan ? 'text-red-300 font-bold' :
-                                  isOoana ? 'text-purple-300 font-bold' :
-                                  isAnajiku ? 'text-amber-300 font-bold' : 'text-slate-100'
-                                }`}
-                              />
-                            </div>
-                          </td>
-
-                          <td className="py-2 px-1 text-center">
-                            <input
-                              type="text"
-                              value={horse.odds}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setHorses(prev => prev.map(h => h.umaban === horse.umaban ? { ...h, odds: val } : h));
-                              }}
-                              className="w-12 bg-slate-900 border border-slate-700 rounded px-0.5 py-0.5 text-center text-xs font-mono text-emerald-400"
-                            />
-                          </td>
-
-                          <td className="py-2 px-1 text-center">
-                            <input
-                              type="text"
-                              value={horse.weight}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setHorses(prev => prev.map(h => h.umaban === horse.umaban ? { ...h, weight: val } : h));
-                              }}
-                              className="w-12 bg-slate-900 border border-slate-700 rounded px-0.5 py-0.5 text-center text-xs text-slate-300"
-                            />
-                          </td>
-
-                          <td className="py-2 px-1 text-center">
-                            <input
-                              type="text"
-                              value={horse.jockey}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setHorses(prev => prev.map(h => h.umaban === horse.umaban ? { ...h, jockey: val } : h));
-                              }}
-                              className="w-14 bg-slate-900 border border-slate-700 rounded px-0.5 py-0.5 text-center text-xs text-slate-300"
-                            />
-                          </td>
-
-                          <td className="py-2 px-1 text-center font-extrabold text-amber-400 text-sm sm:text-base bg-slate-950/80">
-                            {totalP}
-                          </td>
-
-                          <td className="py-2 px-1 text-center bg-slate-800/40">
-                            <input
-                              type="number"
-                              step="0.5"
-                              value={horse.manualBiasP ?? 0.0}
-                              onChange={(e) => {
-                                const val = parseFloat(e.target.value);
-                                setHorses(prev => prev.map(h => h.umaban === horse.umaban ? { ...h, manualBiasP: isNaN(val) ? 0 : val } : h));
-                              }}
-                              className="w-16 bg-slate-900 border border-amber-500/50 rounded px-1 py-0.5 text-center text-xs text-amber-300 font-bold"
-                            />
-                          </td>
-
-                          <td className="py-2 px-1 text-center">
-                            <select
-                              value={roundToHalf(horse.boostP)}
-                              onChange={(e) => {
-                                const val = roundToHalf(e.target.value);
-                                setHorses(prev => prev.map(h => h.umaban === horse.umaban ? { ...h, boostP: val } : h));
-                              }}
-                              className="bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-xs text-indigo-300 font-medium"
-                            >
-                              <option value={-1.0}>-1.0</option>
-                              <option value={-0.5}>-0.5</option>
-                              <option value={0.0}>0.0</option>
-                              <option value={0.5}>+0.5</option>
-                              <option value={1.0}>+1.0</option>
-                              <option value={1.5}>+1.5</option>
-                              <option value={2.0}>+2.0</option>
-                              <option value={2.5}>+2.5</option>
-                              <option value={3.0}>+3.0</option>
-                            </select>
-                          </td>
-
-                          <td className="py-2 px-1 text-center bg-slate-850">
-                            <input
-                              type="checkbox"
-                              checked={horse.customCheck1}
-                              onChange={(e) => {
-                                const checked = e.target.checked;
-                                setHorses(prev => prev.map(h => h.umaban === horse.umaban ? { ...h, customCheck1: checked } : h));
-                              }}
-                              className="w-4 h-4 rounded text-amber-500 focus:ring-0 bg-slate-900 cursor-pointer"
-                            />
-                          </td>
-                          <td className="py-2 px-1 text-center bg-slate-850">
-                            <input
-                              type="checkbox"
-                              checked={horse.customCheck2}
-                              onChange={(e) => {
-                                const checked = e.target.checked;
-                                setHorses(prev => prev.map(h => h.umaban === horse.umaban ? { ...h, customCheck2: checked } : h));
-                              }}
-                              className="w-4 h-4 rounded text-amber-500 focus:ring-0 bg-slate-900 cursor-pointer"
-                            />
-                          </td>
-                          <td className="py-2 px-1 text-center bg-slate-850">
-                            <input
-                              type="checkbox"
-                              checked={horse.customCheck3}
-                              onChange={(e) => {
-                                const checked = e.target.checked;
-                                setHorses(prev => prev.map(h => h.umaban === horse.umaban ? { ...h, customCheck3: checked } : h));
-                              }}
-                              className="w-4 h-4 rounded text-amber-500 focus:ring-0 bg-slate-900 cursor-pointer"
-                            />
-                          </td>
-
-                          <td className="py-2 px-1 text-center">
-                            <input
-                              type="text"
-                              value={horse.run1}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setHorses(prev => prev.map(h => h.umaban === horse.umaban ? { ...h, run1: val } : h));
-                              }}
-                              className="w-20 bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-center text-xs text-slate-300"
-                            />
-                          </td>
-                          <td className="py-2 px-1 text-center">
-                            <input
-                              type="text"
-                              value={horse.run2}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setHorses(prev => prev.map(h => h.umaban === horse.umaban ? { ...h, run2: val } : h));
-                              }}
-                              className="w-20 bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-center text-xs text-slate-300"
-                            />
-                          </td>
-                          <td className="py-2 px-1 text-center">
-                            <input
-                              type="text"
-                              value={horse.run3}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setHorses(prev => prev.map(h => h.umaban === horse.umaban ? { ...h, run3: val } : h));
-                              }}
-                              className="w-20 bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-center text-xs text-slate-300"
-                            />
-                          </td>
-                          <td className="py-2 px-1 text-center">
-                            <input
-                              type="text"
-                              value={horse.run4}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setHorses(prev => prev.map(h => h.umaban === horse.umaban ? { ...h, run4: val } : h));
-                              }}
-                              className="w-20 bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-center text-xs text-slate-300"
-                            />
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          </main>
-
-          {}
-          {isModalOpen && (
-            <div 
-              className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-950/80 backdrop-blur-sm"
-              onPaste={handlePaste}
-            >
-              <div className="bg-slate-800 border border-slate-700 rounded-2xl max-w-2xl w-full p-4 sm:p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
-                <button
-                  onClick={() => setIsModalOpen(false)}
-                  className="absolute top-3 right-3 text-slate-400 hover:text-white p-1 rounded-lg"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-
-                <div className="flex items-center space-x-2 mb-2">
-                  <Cpu className="w-5 h-5 text-purple-400" />
-                  <h2 className="text-base sm:text-lg font-bold text-slate-100">4段階AI解析 (画像・コピペ対応)</h2>
-                </div>
-
-                <div className="space-y-3 mb-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      1. スクショ画像 ({imageFiles.length}枚) - 複数追加可能
-                    </label>
-                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                      {imageFiles.map((img) => (
-                        <div key={img.id} className="relative group border border-slate-700 rounded overflow-hidden bg-slate-950">
-                          <img src={img.url} alt="Screenshot" className="h-16 w-full object-cover" />
-                          <button
-                            onClick={() => removeImageFile(img.id)}
-                            className="absolute top-0.5 right-0.5 bg-red-600 text-white p-0.5 rounded-full"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ))}
-                      <label className="border-2 border-dashed border-slate-600 hover:border-purple-500 rounded h-16 flex flex-col items-center justify-center text-center cursor-pointer bg-slate-900/50">
-                        <Plus className="w-5 h-5 text-slate-400" />
-                        <span className="text-[10px] text-slate-400">画像追加</span>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          multiple
-                          onChange={(e) => addImageFiles(e.target.files)}
-                          className="hidden"
-                        />
-                      </label>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 mb-1">
-                      2. 出走表・成績データのコピペ貼り付け
-                    </label>
-                    <textarea
-                      value={pastedText}
-                      onChange={(e) => setPastedText(e.target.value)}
-                      placeholder="ネット競馬などの出走表テキストをここに貼り付けて解析できます"
-                      rows={3}
-                      className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-slate-300 text-xs focus:outline-none focus:border-purple-500"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex border-b border-slate-700 mb-3 overflow-x-auto">
-                  <button
-                    onClick={() => setActiveStepTab(1)}
-                    className={`py-1.5 px-2.5 text-xs font-bold rounded-t-lg transition whitespace-nowrap ${
-                      activeStepTab === 1 ? 'bg-blue-600 text-white' : 'bg-slate-900 text-slate-400'
-                    }`}
-                  >
-                    ① 基本情報抽出
-                  </button>
-                  <button
-                    onClick={() => setActiveStepTab(2)}
-                    className={`py-1.5 px-2.5 text-xs font-bold rounded-t-lg transition whitespace-nowrap ${
-                      activeStepTab === 2 ? 'bg-amber-600 text-white' : 'bg-slate-900 text-slate-400'
-                    }`}
-                  >
-                    ② バイアスP抽出
-                  </button>
-                  <button
-                    onClick={() => setActiveStepTab(3)}
-                    className={`py-1.5 px-2.5 text-xs font-bold rounded-t-lg transition whitespace-nowrap ${
-                      activeStepTab === 3 ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400'
-                    }`}
-                  >
-                    ③ ブーストP抽出
-                  </button>
-                </div>
-
-                {activeStepTab === 3 && (
-                  <div className="mb-3 flex items-center space-x-2 bg-slate-900 p-1.5 rounded-lg border border-slate-700">
-                    <span className="text-xs font-bold text-slate-400">適用ルール:</span>
-                    <button
-                      onClick={() => setBoostMode('Local')}
-                      className={`flex-1 py-1 text-xs font-bold rounded transition ${
-                        boostMode === 'Local' ? 'bg-amber-600 text-white' : 'text-slate-400'
-                      }`}
-                    >
-                      地方競馬 モード
-                    </button>
-                    <button
-                      onClick={() => setBoostMode('Central')}
-                      className={`flex-1 py-1 text-xs font-bold rounded transition ${
-                        boostMode === 'Central' ? 'bg-blue-600 text-white' : 'text-slate-400'
-                      }`}
-                    >
-                      中央競馬 (JRA) モード
-                    </button>
-                  </div>
-                )}
-
-                <div className="mb-3">
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    ステップ{activeStepTab}プロンプト設定:
-                  </label>
-                  <textarea
-                    value={
-                      activeStepTab === 1 ? prompts.step1 :
-                      activeStepTab === 2 ? prompts.step2 :
-                      boostMode === 'Local' ? prompts.step3Local : prompts.step3Central
-                    }
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setPrompts(prev => ({
-                        ...prev,
-                        [activeStepTab === 1 ? 'step1' :
-                         activeStepTab === 2 ? 'step2' :
-                         boostMode === 'Local' ? 'step3Local' : 'step3Central']: val
-                      }));
-                    }}
-                    rows={4}
-                    className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-slate-300 font-mono text-[11px] focus:outline-none focus:border-purple-500"
-                  />
-                </div>
-
-                {analysisStatus && (
-                  <div className="mb-3 p-2 bg-purple-950/80 border border-purple-700 rounded text-xs text-purple-200 flex items-center space-x-2">
-                    <CheckCircle2 className="w-4 h-4 text-purple-400 animate-pulse" />
-                    <span>{analysisStatus}</span>
-                  </div>
-                )}
-
-                {aiError && (
-                  <div className="mb-3 p-2 bg-red-900/60 border border-red-700 rounded text-xs text-red-200 flex items-center space-x-2">
-                    <AlertCircle className="w-4 h-4 text-red-400" />
-                    <span>{aiError}</span>
-                  </div>
-                )}
-
-                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-700">
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={runAllStepsSequential}
-                      disabled={isAnalyzing || (imageFiles.length === 0 && !pastedText.trim())}
-                      className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-lg text-xs transition flex items-center space-x-1"
-                    >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      <span>⚡ ①〜③ 全ステップ順次実行</span>
-                    </button>
-                    {isAnalyzing && (
-                      <button
-                        onClick={stopAnalysis}
-                        className="px-3 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg text-xs transition flex items-center space-x-1"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                        <span>中止</span>
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => setIsModalOpen(false)}
-                      className="px-3 py-2 bg-slate-700 text-slate-200 rounded-lg text-xs"
-                    >
-                      閉じる
-                    </button>
-                    <button
-                      onClick={() => runStepAnalysis(activeStepTab)}
-                      disabled={isAnalyzing || (imageFiles.length === 0 && !pastedText.trim())}
-                      className="px-3.5 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-lg text-xs transition"
-                    >
-                      {isAnalyzing ? '解析中...' : `ステップ${activeStepTab}実行`}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* APIキー設定モーダル */}
-          {showApiKeyModal && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-              <div className="bg-slate-800 border border-slate-700 rounded-2xl w-full max-w-md p-5 shadow-2xl space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <Key className="w-5 h-5 text-purple-400" />
-                    <h3 className="text-sm font-bold text-white">Google Gemini APIキー設定</h3>
-                  </div>
-                  <button onClick={() => setShowApiKeyModal(false)} className="text-slate-400 hover:text-white">
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-
-                <p className="text-xs text-slate-300 leading-relaxed">
-                  スマホでAI解析を動かすには、Google AI Studioで取得したAPIキーが必要です。<br />
-                  <span className="text-purple-400">※ 入力したキーはお使いのスマホ（ブラウザ）内だけに保存されます。</span>
-                </p>
-
-                <div>
-                  <label className="text-[11px] font-medium text-slate-400 block mb-1">Gemini API Key</label>
-                  <input
-                    type="password"
-                    value={tempApiKey}
-                    onChange={(e) => setTempApiKey(e.target.value)}
-                    placeholder="APIキーを貼り付け..."
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500 font-mono"
-                  />
-                </div>
-
-                <div className="flex justify-between items-center pt-2">
-                  <a
-                    href="https://aistudio.google.com/app/apikey"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[11px] text-purple-400 underline hover:text-purple-300"
-                  >
-                    APIキーを無料で取得 ↗
-                  </a>
-                  <div className="flex space-x-2">
-                    <button
-                      onClick={() => setShowApiKeyModal(false)}
-                      className="px-3 py-1.5 bg-slate-700 text-slate-300 rounded-lg text-xs"
-                    >
-                      キャンセル
-                    </button>
-                    <button
-                      onClick={handleSaveApiKey}
-                      className="px-4 py-1.5 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-lg text-xs transition"
-                    >
-                      保存する
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      );
+      }
+      return updated;
+    });
+  };
+
+  const calculateTotalP = (horse) => {
+    const bias = roundToHalf(horse.manualBiasP ?? 0);
+    const boost = roundToHalf(horse.boostP ?? 0);
+    const checkPt = (horse.customCheck1 ? 1.0 : 0) + (horse.customCheck2 ? 1.0 : 0) + (horse.customCheck3 ? 1.0 : 0);
+    return roundToHalf(bias + boost + checkPt).toFixed(1);
+  };
+
+  const getHorseBadges = (horse) => {
+    const totalP = parseFloat(calculateTotalP(horse));
+    const odds = parseFloat(horse.odds) || 0;
+
+    const activeHorses = horses.slice(0, numHorses);
+    const validOdds = activeHorses.map(h => parseFloat(h.odds) || 999);
+    const minOdds = Math.min(...validOdds);
+    const isFirstFav = odds > 0 && odds === minOdds;
+
+    const allP = activeHorses.map(h => parseFloat(calculateTotalP(h)));
+    const maxP = Math.max(...allP);
+    const sortedP = [...allP].sort((a, b) => b - a);
+    const thirdHighestP = sortedP[2] ?? sortedP[sortedP.length - 1] ?? 0;
+
+    const isTopP = totalP > 0 && totalP === maxP;
+    const isTop3P = totalP > 0 && totalP >= thirdHighestP;
+
+    const isOoana = odds >= 30.0 && totalP >= 4.0;
+    const isChuana = odds >= 15.0 && totalP >= 6.0;
+
+    if (isOoana && isTopP) {
+      return { tag: '⚡神穴馬', bg: 'bg-purple-600 text-white', textClass: 'text-purple-300 font-bold', cellBg: 'bg-gradient-to-r from-purple-700/40 to-indigo-700/40' };
+    }
+    if (isChuana && isTopP) {
+      return { tag: '👹鬼穴馬', bg: 'bg-red-600 text-white', textClass: 'text-red-300 font-bold', cellBg: 'bg-gradient-to-r from-red-700/40 to-orange-700/40' };
+    }
+    if (isFirstFav && isTopP) {
+      return { tag: '👑神鉄板', bg: 'bg-amber-400 text-slate-950', textClass: 'text-amber-300 font-bold', cellBg: 'bg-gradient-to-r from-amber-500/30 to-yellow-500/30' };
+    }
+    if (isFirstFav && isTop3P) {
+      return { tag: '✨準鉄板', bg: 'bg-blue-600 text-white', textClass: 'text-blue-300 font-bold', cellBg: 'bg-gradient-to-r from-blue-600/30 to-indigo-600/30' };
+    }
+    if (odds >= 1.0 && odds < 2.0) {
+      return { tag: '🛡️鉄板馬', bg: 'bg-emerald-600 text-white', textClass: 'text-emerald-300 font-bold', cellBg: 'bg-gradient-to-r from-emerald-600/30 to-teal-600/30' };
+    }
+    if (isOoana) {
+      return { tag: '💣大穴馬', bg: 'bg-purple-500 text-white', textClass: 'text-purple-300 font-bold', cellBg: 'bg-gradient-to-r from-purple-600/30 to-indigo-600/30' };
+    }
+    if (isChuana) {
+      return { tag: '🔥中穴馬', bg: 'bg-orange-500 text-white', textClass: 'text-orange-300 font-bold', cellBg: 'bg-gradient-to-r from-orange-600/30 to-amber-600/30' };
     }
 
-    const rootElement = document.getElementById('root');
-    const root = createRoot(rootElement);
-    root.render(<App />);
-  </script>
-</body>
-</html>
+    return null;
+  };
+
+  const sortedHorses = [...horses].sort((a, b) => {
+    if (sortByPoints) {
+      return parseFloat(calculateTotalP(b)) - parseFloat(calculateTotalP(a));
+    }
+    return a.umaban - b.umaban;
+  });
+
+  const executeFullReset = () => {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch (e) {}
+    setNumHorses(18);
+    setHorses(createInitialHorses(18));
+    setImageFiles([]);
+    setPastedText('');
+    setAiError('');
+    setAnalysisStatus('');
+    setAiMissingMessage('');
+    setPrompts(DEFAULT_PROMPTS);
+    setRaceMeta({
+      raceCondition: '朱鷺S 芝1400m',
+      raceNumber: '7R',
+      trackCondition: '良',
+      biasSummary: '枠:内枠が対象レース数×2の80%以上 / 脚質:先行Ptがダブルスコア ➔ 内先行バイアス',
+      isFastLateBias: false,
+      blinker1: '',
+      blinker2: '',
+      blinker3: ''
+    });
+    setShowResetConfirm(false);
+  };
+
+  const addImageFiles = (files) => {
+    if (!files || files.length === 0) return;
+    const newItems = Array.from(files).map(file => ({
+      id: Math.random().toString(36).substr(2, 9),
+      file,
+      url: URL.createObjectURL(file)
+    }));
+    setImageFiles(prev => [...prev, ...newItems]);
+  };
+
+  const removeImageFile = (id) => {
+    setImageFiles(prev => prev.filter(item => item.id !== id));
+  };
+
+  const handlePaste = (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const newFiles = [];
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const file = items[i].getAsFile();
+        if (file) newFiles.push(file);
+      }
+    }
+    if (newFiles.length > 0) addImageFiles(newFiles);
+  };
+
+  const fileToPart = (fileObj) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64Data = reader.result.split(',')[1];
+        resolve({
+          inlineData: {
+            mimeType: fileObj.file.type || 'image/png',
+            data: base64Data
+          }
+        });
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(fileObj.file);
+    });
+  };
+
+  const callGeminiWithImagesAndText = async (promptText) => {
+    if (imageFiles.length === 0 && !pastedText.trim()) {
+      throw new Error('スクショ画像を追加するか、テキストを入力してください。');
+    }
+
+    abortControllerRef.current = new AbortController();
+    const { signal } = abortControllerRef.current;
+
+    const imageParts = await Promise.all(imageFiles.map(f => fileToPart(f)));
+    let fullPrompt = promptText;
+    if (pastedText.trim()) {
+      fullPrompt += `\n\n【補足入力テキストデータ】:\n${pastedText.trim()}`;
+    }
+
+    const contents = [
+      {
+        role: 'user',
+        parts: [{ text: fullPrompt }, ...imageParts]
+      }
+    ];
+
+    let response;
+    let attempt = 0;
+    const delays = [1000, 2000, 4000];
+
+    while (attempt <= 3) {
+      if (signal.aborted) throw new Error('AbortError');
+      try {
+        response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${GEMINI_API_KEY}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents,
+            generationConfig: { responseMimeType: "application/json" }
+          }),
+          signal
+        });
+        if (response.ok) break;
+      } catch (err) {
+        if (err.name === 'AbortError') throw err;
+      }
+      if (attempt < delays.length) {
+        if (signal.aborted) throw new Error('AbortError');
+        await new Promise(r => setTimeout(r, delays[attempt]));
+      }
+      attempt++;
+    }
+
+    if (signal.aborted) throw new Error('AbortError');
+
+    if (!response || !response.ok) {
+      throw new Error('AIとの通信に失敗しました。時間をおいて再試行してください。');
+    }
+
+    const result = await response.json();
+    const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!text) throw new Error('AIからレスポンスを取得できませんでした。');
+
+    const cleanedText = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+    return JSON.parse(cleanedText);
+  };
+
+  const runStepAnalysis = async (stepNum) => {
+    setIsAnalyzing(true);
+    setAiError('');
+
+    try {
+      if (stepNum === 1) {
+        setAnalysisStatus('① 基本情報（レース番号・オッズ・体重・騎手）を抽出中...');
+        const res = await callGeminiWithImagesAndText(prompts.step1);
+
+        setRaceMeta(prev => ({
+          ...prev,
+          raceCondition: res.raceCondition || prev.raceCondition,
+          raceNumber: res.raceNumber || prev.raceNumber,
+          trackCondition: res.trackCondition || prev.trackCondition
+        }));
+
+        if (res.missingInfoMessage) {
+          setAiMissingMessage(res.missingInfoMessage);
+        }
+
+        if (Array.isArray(res.horses) && res.horses.length > 0) {
+          const count = Math.min(Math.max(res.horses.length, 1), 18);
+          setNumHorses(count);
+
+          setHorses(prev => Array.from({ length: count }, (_, i) => {
+            const uNum = i + 1;
+            const matched = res.horses.find(item => Number(item.umaban) === uNum) || res.horses[i];
+            const existing = prev.find(h => h.umaban === uNum);
+
+            return {
+              umaban: uNum,
+              waku: calculateWaku(uNum, count),
+              name: matched?.name || existing?.name || `馬名${uNum}`,
+              odds: matched?.odds !== undefined ? String(matched.odds) : (existing?.odds || '0.0'),
+              weight: matched?.weight || existing?.weight || '480',
+              jockey: matched?.jockey || existing?.jockey || '騎手',
+              manualBiasP: existing?.manualBiasP ?? 0.0,
+              boostP: existing?.boostP ?? 0.0,
+              customCheck1: existing?.customCheck1 || false,
+              customCheck2: existing?.customCheck2 || false,
+              customCheck3: existing?.customCheck3 || false,
+              run1: existing?.run1 || '-',
+              run2: existing?.run2 || '-',
+              run3: existing?.run3 || '-',
+              run4: existing?.run4 || '-'
+            };
+          }));
+        }
+      } else if (stepNum === 2) {
+        setAnalysisStatus('② 選択バイアスの定義に従い 0.5 単位でバイアスPを算定中...');
+        const currentBiasLabel = BIAS_PATTERNS.find(b => b.id === biasType)?.label || biasType;
+        const raceClass = raceMeta.raceCondition || 'G3';
+        const formattedPrompt = prompts.step2
+          .replace('{CURRENT_BIAS}', currentBiasLabel)
+          .replace('{RACE_CLASS}', raceClass);
+
+        const res = await callGeminiWithImagesAndText(formattedPrompt);
+
+        if (Array.isArray(res)) {
+          setHorses(prev => prev.map(h => {
+            const matched = res.find(item => Number(item.umaban) === h.umaban);
+            if (matched) {
+              return { 
+                ...h, 
+                manualBiasP: matched.biasP !== undefined ? roundToHalf(matched.biasP) : h.manualBiasP,
+                run1: matched.run1 || h.run1,
+                run2: matched.run2 || h.run2,
+                run3: matched.run3 || h.run3,
+                run4: matched.run4 || h.run4
+              };
+            }
+            return h;
+          }));
+        }
+      } else if (stepNum === 3) {
+        setAnalysisStatus(`③ ブーストP (${boostMode === 'Local' ? '地方' : '中央'}) を算定中...`);
+        const targetPrompt = boostMode === 'Local' ? prompts.step3Local : prompts.step3Central;
+        
+        let contextPrefix = `【現在のレース状況】:\n馬場状態: ${raceMeta.trackCondition}, 高速上がりバイアス: ${raceMeta.isFastLateBias ? '認定あり' : 'なし'}, 指定バイアス: ${biasType}\n\n`;
+        const res = await callGeminiWithImagesAndText(contextPrefix + targetPrompt);
+
+        if (Array.isArray(res)) {
+          setHorses(prev => prev.map(h => {
+            const matched = res.find(item => Number(item.umaban) === h.umaban);
+            if (matched && matched.boostP !== undefined) {
+              return { ...h, boostP: roundToHalf(matched.boostP) };
+            }
+            return h;
+          }));
+        }
+      }
+      setAnalysisStatus(`ステップ${stepNum}の解析が完了しました！`);
+    } catch (err) {
+      if (err.message === 'AbortError' || err.name === 'AbortError') {
+      } else {
+        setAiError(err.message || `ステップ${stepNum}の解析に失敗しました。`);
+      }
+    } finally {
+      setIsAnalyzing(false);
+      abortControllerRef.current = null;
+    }
+  };
+
+  const runAllStepsSequential = async () => {
+    if (imageFiles.length === 0 && !pastedText.trim()) {
+      setAiError('スクショ画像を追加するかテキストを入力してください。');
+      return;
+    }
+    setIsAnalyzing(true);
+    setAiError('');
+
+    try {
+      setAnalysisStatus('【1/3】① 基本情報抽出を実行中...');
+      await runStepAnalysis(1);
+
+      setAnalysisStatus('【2/3】② バイアスポイント算定を実行中...');
+      await runStepAnalysis(2);
+
+      setAnalysisStatus('【3/3】③ ブーストポイント算定を実行中...');
+      await runStepAnalysis(3);
+
+      setAnalysisStatus('全ステップの解析が完了しました！');
+      setIsModalOpen(false);
+    } catch (err) {
+      if (err.message !== 'AbortError' && err.name !== 'AbortError') {
+        setAiError('一括実行中にエラーが発生しました。個別ステップでお試しください。');
+      }
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col font-sans">
+      <header className="bg-slate-800 border-b border-slate-700 px-3 sm:px-4 py-2 sticky top-0 z-30 shadow-md">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2">
+          <div className="flex items-center space-x-2">
+            <Trophy className="w-5 h-5 text-amber-400 shrink-0" />
+            <h1 className="text-base sm:text-xl font-bold text-amber-400 whitespace-nowrap">馬柱アナライザー Pro</h1>
+          </div>
+
+          <div className="flex items-center space-x-1 sm:space-x-2">
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center space-x-1 px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold rounded-lg shadow text-xs transition"
+            >
+              <Cpu className="w-3.5 h-3.5 text-purple-300 animate-pulse" />
+              <span>📸 AI解析</span>
+            </button>
+
+            <button
+              onClick={() => setSortByPoints(!sortByPoints)}
+              className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-lg text-xs font-bold transition ${
+                sortByPoints ? 'bg-amber-500 text-slate-950' : 'bg-slate-700 text-slate-200 hover:bg-slate-600'
+              }`}
+            >
+              <ArrowUpDown className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">{sortByPoints ? '合計P順' : '馬番順'}</span>
+              <span className="sm:hidden">{sortByPoints ? 'P順' : '馬番'}</span>
+            </button>
+
+            {showResetConfirm ? (
+              <div className="flex items-center space-x-1 bg-red-950 border border-red-700 rounded-lg p-1 text-xs">
+                <span className="text-red-200 font-bold px-1">全リセット？</span>
+                <button
+                  onClick={executeFullReset}
+                  className="bg-red-600 text-white px-2 py-0.5 rounded font-bold hover:bg-red-500"
+                >
+                  はい
+                </button>
+                <button
+                  onClick={() => setShowResetConfirm(false)}
+                  className="bg-slate-700 text-slate-200 px-1.5 py-0.5 rounded hover:bg-slate-600"
+                >
+                  いいえ
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowResetConfirm(true)}
+                className="p-1.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-lg transition"
+                title="全初期化"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        </div>
+      </header>
+
+      <main className="flex-1 max-w-7xl w-full mx-auto p-2 sm:p-4 space-y-3">
+        {aiMissingMessage && (
+          <section className="bg-amber-950/90 border-2 border-amber-500/80 rounded-xl p-3 px-4 text-amber-200 text-xs sm:text-sm flex items-center justify-between shadow-lg">
+            <div className="flex items-center space-x-2">
+              <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 animate-bounce" />
+              <div>
+                <strong className="text-amber-300">⚠️ AIからの不足情報・注意事項メッセージ:</strong>
+                <p className="mt-0.5 text-amber-100">{aiMissingMessage}</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setAiMissingMessage('')}
+              className="ml-2 text-slate-400 hover:text-white p-1"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </section>
+        )}
+
+        <section className="bg-slate-800/90 border border-slate-700 rounded-xl p-3 shadow-lg space-y-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs border-b border-slate-700/80 pb-2">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+              <span className="font-bold text-amber-400 flex items-center space-x-1">
+                <Info className="w-3.5 h-3.5" />
+                <span>レース概要:</span>
+              </span>
+              <span className="text-slate-200">条件: <strong className="text-white font-semibold">{raceMeta.raceCondition}</strong></span>
+              <span className="text-slate-200">馬場: <strong className="text-emerald-400 font-semibold">{raceMeta.trackCondition}</strong></span>
+            </div>
+            <div className="bg-purple-950/80 border border-purple-700/60 text-purple-200 px-2.5 py-1 rounded-full text-xs flex items-center space-x-1">
+              <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+              <span>AI傾向: <strong>{raceMeta.biasSummary}</strong></span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-12 gap-2 text-xs">
+            <div className="col-span-1 sm:col-span-2">
+              <label className="block font-semibold text-slate-400 mb-1">出走頭数</label>
+              <select
+                value={numHorses}
+                onChange={(e) => handleNumHorsesChange(e.target.value)}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-slate-200 font-bold"
+              >
+                {Array.from({ length: 18 }, (_, i) => i + 1).map(n => (
+                  <option key={n} value={n}>{n}頭立て</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="col-span-1 sm:col-span-1">
+              <label className="block font-semibold text-slate-400 mb-1 truncate">レース</label>
+              <input
+                type="text"
+                value={raceMeta.raceNumber}
+                onChange={(e) => setRaceMeta(prev => ({ ...prev, raceNumber: e.target.value }))}
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-1 py-1.5 text-slate-200 font-bold text-center"
+              />
+            </div>
+
+            <div className="col-span-1 sm:col-span-3">
+              <label className="block font-semibold text-slate-400 mb-1">高速上がりバイアス</label>
+              <button
+                onClick={() => setRaceMeta(prev => ({ ...prev, isFastLateBias: !prev.isFastLateBias }))}
+                className={`w-full py-1.5 px-2 rounded-lg font-bold border transition flex items-center justify-center space-x-1 ${
+                  raceMeta.isFastLateBias 
+                    ? 'bg-amber-500/20 border-amber-500 text-amber-300' 
+                    : 'bg-slate-900 border-slate-700 text-slate-400'
+                }`}
+              >
+                <Zap className="w-3.5 h-3.5" />
+                <span>{raceMeta.isFastLateBias ? '⚡ 認定あり' : 'なし (通常)'}</span>
+              </button>
+            </div>
+
+            <div className="col-span-1 sm:col-span-3">
+              <label className="block font-semibold text-slate-400 mb-1">バイアス傾向 (9種)</label>
+              <select
+                value={biasType}
+                onChange={(e) => setBiasType(e.target.value)}
+                className="w-full bg-slate-900 border border-amber-500/40 text-amber-300 font-bold rounded-lg px-2 py-1.5"
+              >
+                {BIAS_PATTERNS.map(p => (
+                  <option key={p.id} value={p.id}>{p.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="col-span-2 sm:col-span-3">
+              <label className="block font-semibold text-slate-400 mb-1">初ブリンカー(馬番)</label>
+              <div className="flex space-x-1">
+                {[1, 2, 3].map(num => (
+                  <select
+                    key={`blinker${num}`}
+                    value={raceMeta[`blinker${num}`] || ''}
+                    onChange={(e) => setRaceMeta(prev => ({ ...prev, [`blinker${num}`]: e.target.value }))}
+                    className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-1 py-1.5 text-slate-200 font-bold text-center"
+                  >
+                    <option value="">-</option>
+                    {Array.from({ length: 18 }, (_, i) => i + 1).map(n => (
+                      <option key={n} value={n}>{n}</option>
+                    ))}
+                  </select>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="bg-slate-800 border border-slate-700 rounded-xl shadow-xl overflow-hidden">
+          <div className="overflow-x-auto relative max-h-[68vh]">
+            <table className="w-full text-left border-collapse text-xs sm:text-sm">
+              <thead className="bg-slate-900 text-slate-300 sticky top-0 z-20 shadow">
+                <tr>
+                  <th className="py-2.5 px-1 text-center w-[36px] min-w-[36px] sticky left-0 z-30 bg-slate-900 border-r border-slate-800">馬番</th>
+                  <th className="py-2.5 px-1 text-center w-[36px] min-w-[36px] sticky left-[36px] z-30 bg-slate-900 border-r border-slate-800">枠番</th>
+                  <th className="py-2.5 px-2 min-w-[120px] sticky left-[72px] z-30 bg-slate-900 border-r border-slate-700">馬名</th>
+                  <th className="py-2.5 px-1 text-center min-w-[55px]">オッズ</th>
+                  <th className="py-2.5 px-1 text-center min-w-[60px]">体重</th>
+                  <th className="py-2.5 px-1 text-center min-w-[65px]">騎手</th>
+                  <th className="py-2.5 px-1 text-center min-w-[75px] text-amber-400 font-bold bg-slate-950">合計P</th>
+                  <th className="py-2.5 px-1 text-center min-w-[90px] bg-slate-850 text-amber-300">バイアスP (手入力可)</th>
+                  <th className="py-2.5 px-1 text-center min-w-[75px]">ブーストP</th>
+
+                  <th className="py-2.5 px-1 text-center min-w-[70px] bg-slate-850">
+                    <select
+                      value={customHeader1}
+                      onChange={(e) => setCustomHeader1(e.target.value)}
+                      className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded px-1 py-0.5 font-bold"
+                    >
+                      {HEADER_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                  </th>
+                  <th className="py-2.5 px-1 text-center min-w-[70px] bg-slate-850">
+                    <select
+                      value={customHeader2}
+                      onChange={(e) => setCustomHeader2(e.target.value)}
+                      className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded px-1 py-0.5 font-bold"
+                    >
+                      {HEADER_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                  </th>
+                  <th className="py-2.5 px-1 text-center min-w-[70px] bg-slate-850">
+                    <select
+                      value={customHeader3}
+                      onChange={(e) => setCustomHeader3(e.target.value)}
+                      className="bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded px-1 py-0.5 font-bold"
+                    >
+                      {HEADER_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                  </th>
+
+                  <th className="py-2.5 px-2 text-center min-w-[100px]">前走</th>
+                  <th className="py-2.5 px-2 text-center min-w-[100px]">2走前</th>
+                  <th className="py-2.5 px-2 text-center min-w-[100px]">3走前</th>
+                  <th className="py-2.5 px-2 text-center min-w-[100px]">4走前</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-700/60">
+                {sortedHorses.map((horse) => {
+                  const wakuStyle = WAKU_COLORS[horse.waku] || WAKU_COLORS[1];
+                  const isHighlighted = highlightedUmaban === horse.umaban;
+                  const badgeInfo = getHorseBadges(horse);
+                  const totalP = calculateTotalP(horse);
+
+                  return (
+                    <tr
+                      key={horse.umaban}
+                      className={`transition-colors ${
+                        isHighlighted ? 'bg-amber-500/20' : 'hover:bg-slate-700/40'
+                      }`}
+                    >
+                      <td 
+                        onClick={() => setHighlightedUmaban(isHighlighted ? null : horse.umaban)}
+                        className="py-2 px-1 text-center font-extrabold cursor-pointer sticky left-0 z-10 bg-slate-900 border-r border-slate-800 text-slate-200"
+                      >
+                        {horse.umaban}
+                      </td>
+
+                      <td className="py-2 px-1 text-center sticky left-[36px] z-10 bg-slate-900 border-r border-slate-800">
+                        <span className={`inline-block w-5 h-5 rounded-full text-[11px] font-bold leading-5 ${wakuStyle.badge}`}>
+                          {horse.waku}
+                        </span>
+                      </td>
+
+                      <td className={`py-2 px-1.5 sticky left-[72px] z-10 bg-slate-900 border-r border-slate-700 ${
+                        badgeInfo ? badgeInfo.cellBg : ''
+                      }`}>
+                        <div className="flex items-center space-x-1">
+                          {badgeInfo && (
+                            <span className={`${badgeInfo.bg} text-[10px] px-1 rounded font-black shrink-0 animate-pulse`}>
+                              {badgeInfo.tag}
+                            </span>
+                          )}
+                          <input
+                            type="text"
+                            value={horse.name}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setHorses(prev => prev.map(h => h.umaban === horse.umaban ? { ...h, name: val } : h));
+                            }}
+                            className={`w-full bg-transparent border-b border-transparent hover:border-slate-600 focus:border-amber-400 font-medium px-0.5 py-0.5 ${
+                              badgeInfo ? badgeInfo.textClass : 'text-slate-100'
+                            }`}
+                          />
+                        </div>
+                      </td>
+
+                      <td className="py-2 px-1 text-center">
+                        <input
+                          type="text"
+                          value={horse.odds}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setHorses(prev => prev.map(h => h.umaban === horse.umaban ? { ...h, odds: val } : h));
+                          }}
+                          className="w-12 bg-slate-900 border border-slate-700 rounded px-0.5 py-0.5 text-center text-xs font-mono text-emerald-400"
+                        />
+                      </td>
+
+                      <td className="py-2 px-1 text-center">
+                        <input
+                          type="text"
+                          value={horse.weight}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setHorses(prev => prev.map(h => h.umaban === horse.umaban ? { ...h, weight: val } : h));
+                          }}
+                          className="w-12 bg-slate-900 border border-slate-700 rounded px-0.5 py-0.5 text-center text-xs text-slate-300"
+                        />
+                      </td>
+
+                      <td className="py-2 px-1 text-center">
+                        <input
+                          type="text"
+                          value={horse.jockey}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setHorses(prev => prev.map(h => h.umaban === horse.umaban ? { ...h, jockey: val } : h));
+                          }}
+                          className="w-14 bg-slate-900 border border-slate-700 rounded px-0.5 py-0.5 text-center text-xs text-slate-300"
+                        />
+                      </td>
+
+                      <td className="py-2 px-1 text-center font-extrabold text-amber-400 text-sm sm:text-base bg-slate-950/80">
+                        {totalP}
+                      </td>
+
+                      <td className="py-2 px-1 text-center bg-slate-800/40">
+                        <input
+                          type="number"
+                          step="0.5"
+                          value={horse.manualBiasP ?? 0.0}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value);
+                            setHorses(prev => prev.map(h => h.umaban === horse.umaban ? { ...h, manualBiasP: isNaN(val) ? 0 : val } : h));
+                          }}
+                          className="w-16 bg-slate-900 border border-amber-500/50 rounded px-1 py-0.5 text-center text-xs text-amber-300 font-bold"
+                        />
+                      </td>
+
+                      <td className="py-2 px-1 text-center">
+                        <select
+                          value={roundToHalf(horse.boostP)}
+                          onChange={(e) => {
+                            const val = roundToHalf(e.target.value);
+                            setHorses(prev => prev.map(h => h.umaban === horse.umaban ? { ...h, boostP: val } : h));
+                          }}
+                          className="bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-xs text-indigo-300 font-medium"
+                        >
+                          <option value={-1.0}>-1.0</option>
+                          <option value={-0.5}>-0.5</option>
+                          <option value={0.0}>0.0</option>
+                          <option value={0.5}>+0.5</option>
+                          <option value={1.0}>+1.0</option>
+                          <option value={1.5}>+1.5</option>
+                          <option value={2.0}>+2.0</option>
+                          <option value={2.5}>+2.5</option>
+                          <option value={3.0}>+3.0</option>
+                        </select>
+                      </td>
+
+                      <td className="py-2 px-1 text-center bg-slate-850">
+                        <input
+                          type="checkbox"
+                          checked={horse.customCheck1}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setHorses(prev => prev.map(h => h.umaban === horse.umaban ? { ...h, customCheck1: checked } : h));
+                          }}
+                          className="w-4 h-4 rounded text-amber-500 focus:ring-0 bg-slate-900 cursor-pointer"
+                        />
+                      </td>
+                      <td className="py-2 px-1 text-center bg-slate-850">
+                        <input
+                          type="checkbox"
+                          checked={horse.customCheck2}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setHorses(prev => prev.map(h => h.umaban === horse.umaban ? { ...h, customCheck2: checked } : h));
+                          }}
+                          className="w-4 h-4 rounded text-amber-500 focus:ring-0 bg-slate-900 cursor-pointer"
+                        />
+                      </td>
+                      <td className="py-2 px-1 text-center bg-slate-850">
+                        <input
+                          type="checkbox"
+                          checked={horse.customCheck3}
+                          onChange={(e) => {
+                            const checked = e.target.checked;
+                            setHorses(prev => prev.map(h => h.umaban === horse.umaban ? { ...h, customCheck3: checked } : h));
+                          }}
+                          className="w-4 h-4 rounded text-amber-500 focus:ring-0 bg-slate-900 cursor-pointer"
+                        />
+                      </td>
+
+                      <td className="py-2 px-1 text-center">
+                        <input
+                          type="text"
+                          value={horse.run1}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setHorses(prev => prev.map(h => h.umaban === horse.umaban ? { ...h, run1: val } : h));
+                          }}
+                          className="w-20 bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-center text-xs text-slate-300"
+                        />
+                      </td>
+                      <td className="py-2 px-1 text-center">
+                        <input
+                          type="text"
+                          value={horse.run2}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setHorses(prev => prev.map(h => h.umaban === horse.umaban ? { ...h, run2: val } : h));
+                          }}
+                          className="w-20 bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-center text-xs text-slate-300"
+                        />
+                      </td>
+                      <td className="py-2 px-1 text-center">
+                        <input
+                          type="text"
+                          value={horse.run3}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setHorses(prev => prev.map(h => h.umaban === horse.umaban ? { ...h, run3: val } : h));
+                          }}
+                          className="w-20 bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-center text-xs text-slate-300"
+                        />
+                      </td>
+                      <td className="py-2 px-1 text-center">
+                        <input
+                          type="text"
+                          value={horse.run4}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setHorses(prev => prev.map(h => h.umaban === horse.umaban ? { ...h, run4: val } : h));
+                          }}
+                          className="w-20 bg-slate-900 border border-slate-700 rounded px-1 py-0.5 text-center text-xs text-slate-300"
+                        />
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+
+      {isModalOpen && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-slate-950/80 backdrop-blur-sm"
+          onPaste={handlePaste}
+        >
+          <div className="bg-slate-800 border border-slate-700 rounded-2xl max-w-2xl w-full p-4 sm:p-6 shadow-2xl relative max-h-[90vh] overflow-y-auto">
+            <button
+              onClick={() => setIsModalOpen(false)}
+              className="absolute top-3 right-3 text-slate-400 hover:text-white p-1 rounded-lg"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center space-x-2 mb-2">
+              <Cpu className="w-5 h-5 text-purple-400" />
+              <h2 className="text-base sm:text-lg font-bold text-slate-100">4段階AI解析 (画像・コピペ対応)</h2>
+            </div>
+
+            <div className="space-y-3 mb-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  1. スクショ画像 ({imageFiles.length}枚) - 複数追加可能
+                </label>
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                  {imageFiles.map((img) => (
+                    <div key={img.id} className="relative group border border-slate-700 rounded overflow-hidden bg-slate-950">
+                      <img src={img.url} alt="Screenshot" className="h-16 w-full object-cover" />
+                      <button
+                        onClick={() => removeImageFile(img.id)}
+                        className="absolute top-0.5 right-0.5 bg-red-600 text-white p-0.5 rounded-full"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                  <label className="border-2 border-dashed border-slate-600 hover:border-purple-500 rounded h-16 flex flex-col items-center justify-center text-center cursor-pointer bg-slate-900/50">
+                    <Plus className="w-5 h-5 text-slate-400" />
+                    <span className="text-[10px] text-slate-400">画像追加</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={(e) => addImageFiles(e.target.files)}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  2. 出走表・成績データのコピペ貼り付け
+                </label>
+                <textarea
+                  value={pastedText}
+                  onChange={(e) => setPastedText(e.target.value)}
+                  placeholder="ネット競馬などの出走表テキストをここに貼り付けて解析できます"
+                  rows={3}
+                  className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-slate-300 text-xs focus:outline-none focus:border-purple-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex border-b border-slate-700 mb-3 overflow-x-auto">
+              <button
+                onClick={() => setActiveStepTab(1)}
+                className={`py-1.5 px-2.5 text-xs font-bold rounded-t-lg transition whitespace-nowrap ${
+                  activeStepTab === 1 ? 'bg-blue-600 text-white' : 'bg-slate-900 text-slate-400'
+                }`}
+              >
+                ① 基本情報抽出
+              </button>
+              <button
+                onClick={() => setActiveStepTab(2)}
+                className={`py-1.5 px-2.5 text-xs font-bold rounded-t-lg transition whitespace-nowrap ${
+                  activeStepTab === 2 ? 'bg-amber-600 text-white' : 'bg-slate-900 text-slate-400'
+                }`}
+              >
+                ② バイアスP抽出
+              </button>
+              <button
+                onClick={() => setActiveStepTab(3)}
+                className={`py-1.5 px-2.5 text-xs font-bold rounded-t-lg transition whitespace-nowrap ${
+                  activeStepTab === 3 ? 'bg-indigo-600 text-white' : 'bg-slate-900 text-slate-400'
+                }`}
+              >
+                ③ ブーストP抽出
+              </button>
+            </div>
+
+            {activeStepTab === 3 && (
+              <div className="mb-3 flex items-center space-x-2 bg-slate-900 p-1.5 rounded-lg border border-slate-700">
+                <span className="text-xs font-bold text-slate-400">適用ルール:</span>
+                <button
+                  onClick={() => setBoostMode('Local')}
+                  className={`flex-1 py-1 text-xs font-bold rounded transition ${
+                    boostMode === 'Local' ? 'bg-amber-600 text-white' : 'text-slate-400'
+                  }`}
+                >
+                  地方競馬 モード
+                </button>
+                <button
+                  onClick={() => setBoostMode('Central')}
+                  className={`flex-1 py-1 text-xs font-bold rounded transition ${
+                    boostMode === 'Central' ? 'bg-blue-600 text-white' : 'text-slate-400'
+                  }`}
+                >
+                  中央競馬 (JRA) モード
+                </button>
+              </div>
+            )}
+
+            <div className="mb-3">
+              <label className="block text-xs font-semibold text-slate-300 mb-1">
+                ステップ{activeStepTab}プロンプト設定:
+              </label>
+              <textarea
+                value={
+                  activeStepTab === 1 ? prompts.step1 :
+                  activeStepTab === 2 ? prompts.step2 :
+                  boostMode === 'Local' ? prompts.step3Local : prompts.step3Central
+                }
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setPrompts(prev => ({
+                    ...prev,
+                    [activeStepTab === 1 ? 'step1' :
+                     activeStepTab === 2 ? 'step2' :
+                     boostMode === 'Local' ? 'step3Local' : 'step3Central']: val
+                  }));
+                }}
+                rows={4}
+                className="w-full bg-slate-950 border border-slate-700 rounded p-2 text-slate-300 font-mono text-[11px] focus:outline-none focus:border-purple-500"
+              />
+            </div>
+
+            {analysisStatus && (
+              <div className="mb-3 p-2 bg-purple-950/80 border border-purple-700 rounded text-xs text-purple-200 flex items-center space-x-2">
+                <CheckCircle2 className="w-4 h-4 text-purple-400 animate-pulse" />
+                <span>{analysisStatus}</span>
+              </div>
+            )}
+
+            {aiError && (
+              <div className="mb-3 p-2 bg-red-900/60 border border-red-700 rounded text-xs text-red-200 flex items-center space-x-2">
+                <AlertCircle className="w-4 h-4 text-red-400" />
+                <span>{aiError}</span>
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-700">
+              <div className="flex space-x-2">
+                <button
+                  onClick={runAllStepsSequential}
+                  disabled={isAnalyzing || (imageFiles.length === 0 && !pastedText.trim())}
+                  className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-lg text-xs transition flex items-center space-x-1"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>⚡ ①〜③ 全ステップ順次実行</span>
+                </button>
+                {isAnalyzing && (
+                  <button
+                    onClick={stopAnalysis}
+                    className="px-3 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg text-xs transition flex items-center space-x-1"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    <span>中止</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="flex space-x-2">
+                <button
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-3 py-2 bg-slate-700 text-slate-200 rounded-lg text-xs"
+                >
+                  閉じる
+                </button>
+                <button
+                  onClick={() => runStepAnalysis(activeStepTab)}
+                  disabled={isAnalyzing || (imageFiles.length === 0 && !pastedText.trim())}
+                  className="px-3.5 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-lg text-xs transition"
+                >
+                  {isAnalyzing ? '解析中...' : `ステップ${activeStepTab}実行`}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
